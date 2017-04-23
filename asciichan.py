@@ -98,8 +98,8 @@ def users_key(group='default'):
     return db.Key.from_path('users', group)
 
 
-# creat user database
 class User(db.Model):
+    """Create user database"""
     name = db.StringProperty(required=True)
     pw_hash = db.StringProperty(required=True)
     email = db.StringProperty()
@@ -128,13 +128,8 @@ class User(db.Model):
             return u
 
 
-# blog start
-def blog_key(name='default'):
-    return db.Key.from_path('blogs', name)
-
-
-# create post database object
 class Post(db.Model):
+    """create post database object"""
     subject = db.StringProperty(required=True)
     content = db.TextProperty(required=True)
     created = db.DateTimeProperty(auto_now_add=True)
@@ -157,15 +152,21 @@ class Post(db.Model):
         return Comment.all().filter("post = ", str(self.key().id()))
 
 
-# create comment database object
 class Comment(db.Model):
+    """create comment database object"""
     comment = db.TextProperty(required=True)
     post = db.StringProperty(required=True)
+    author = db.StringProperty(required=False)
 
     @classmethod
     def render(self):
         self._render_text = self.content.replace('\n', '<br>')
         return render_str("comment-page.html", c=self)
+
+
+# blog start
+def blog_key(name='default'):
+    return db.Key.from_path('blogs', name)
 
 
 # fills the front page with blog posts
@@ -199,7 +200,7 @@ class NewPost(BlogHandler):
 
     def post(self):
         if not self.user:
-            self.redirect('/blog')
+            return self.redirect('/login')
 
         subject = self.request.get('subject')
         content = self.request.get('content')
@@ -237,21 +238,27 @@ class EditPost(BlogHandler):
 
     def post(self, post_id):
         if not self.user:
-            self.redirect('/blog')
+            self.redirect('/login')
 
-        subject = self.request.get('subject')
-        content = self.request.get('content')
-        author = self.user.name
+        key = db.Key.from_path('Post', int(post_id), parent=blog_key())
+        post = db.get(key)
+        n1 = post.author
+        n2 = self.user.name
 
-        if subject and content:
-            p = Post(parent=blog_key(), subject=subject, content=content,
-                     author=author)
-            p.put()
-            self.redirect('/blog/%s' % str(p.key().id()))
-        else:
-            error = "subject and content, please!"
-            self.render("newpost.html", subject=subject,
-                        content=content, error=error, author=author)
+        if n1 == n2:
+            subject = self.request.get('subject')
+            content = self.request.get('content')
+            author = self.user.name
+
+            if subject and content:
+                post.subject = subject
+                post.content = content
+                post.put()
+                self.redirect('/blog/%s' % str(post.key().id()))
+            else:
+                error = "subject and content, please!"
+                self.render("newpost.html", subject=subject,
+                            content=content, error=error, author=author)
 
 
 # like handler
@@ -262,16 +269,17 @@ class LikePage(BlogHandler):
         else:
             key = db.Key.from_path('Post', int(post_id), parent=blog_key())
             post = db.get(key)
-            author = post.author
-            current_user = self.user.name
+            if post is not None:
+                author = post.author
+                current_user = self.user.name
 
-            if author == current_user or current_user in post.liked_by:
-                self.redirect('/blog')
-            else:
-                post.likes += 1
-                post.liked_by.append(current_user)
-                post.put()
-                self.redirect('/blog')
+                if author == current_user or current_user in post.liked_by:
+                    self.redirect('/blog')
+                else:
+                    post.likes = post.likes + 1
+                    post.liked_by.append(current_user)
+                    post.put()
+                    self.redirect('/blog')
 
 
 # Comment handler
@@ -280,26 +288,27 @@ class NewComment(BlogHandler):
         if not self.user:
             error = "You must be logged in to comment"
             self.redirect("/login")
-            return
         post = Post.get_by_id(int(post_id), parent=blog_key())
         subject = post.subject
         content = post.content
+        author = self.user.name
         self.render("comment-page.html", subject=subject,
-                    content=content, pkey=post.key())
+                    content=content, author=author, pkey=post.key())
 
     def post(self, post_id):
         key = db.Key.from_path('Post', int(post_id), parent=blog_key())
         post = db.get(key)
+        author = self.user.name
         if not post:
             self.error(404)
             return
 
         if not self.user:
-            self.redirect('/blog')
+            return self.redirect('/login')
 
         comment = self.request.get('comment')
         if comment:
-            c = Comment(comment=comment, post=post_id, parent=self.user.key())
+            c = Comment(comment=comment, post=post_id, author=author, parent=self.user.key())
             c.put()
             self.redirect('/blog/%s' % str(post_id))
         else:
@@ -310,6 +319,9 @@ class NewComment(BlogHandler):
 # make it so users can edit their own comments
 class EditComment(BlogHandler):
     def get(self, post_id, comment_id):
+        if not self.user:
+            error = "You must be logged in to comment"
+            return self.redirect("/login")
         post = Post.get_by_id(int(post_id), parent=blog_key())
         comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
         if comment:
@@ -317,21 +329,35 @@ class EditComment(BlogHandler):
                         content=post.content, comment=comment.comment)
 
     def post(self, post_id, comment_id):
+        if not self.user:
+            error = "You must be logged in to comment"
+            self.redirect("/login")
         comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
-        if comment.parent().key().id() == self.user.key().id():
-            comment.comment = self.request.get('comment')
-            comment.put()
-        self.redirect('/blog/%s' % str(post_id))
+        if comment is not None:
+            if comment.parent().key().id() == self.user.key().id():
+                comment.comment = self.request.get('comment')
+                comment.put()
+            self.redirect('/blog/%s' % str(post_id))
 
 
 # make it so users can delete their own comments
 class DeleteComment(BlogHandler):
     def get(self, post_id, comment_id):
+        if not self.user:
+            error = "You must be logged in to delete"
+            self.redirect("/login")
         post = Post.get_by_id(int(post_id), parent=blog_key())
         comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
-        if comment:
-            comment.delete()
-            self.redirect('/blog/%s' % str(post_id))
+        n1 = post.author
+        n2 = self.user.name
+
+        if n1 == n2:
+            if comment:
+                comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
+                comment.delete()
+                self.redirect('/blog/%s' % str(post_id))
+        else:
+            return self.redirect("/login")
 
 
 # deletes posts
@@ -342,16 +368,17 @@ class DeletePost(BlogHandler):
         else:
             key = db.Key.from_path('Post', int(post_id), parent=blog_key())
             post = db.get(key)
-            n1 = post.author
-            n2 = self.user.name
+            if post is not None:
+                n1 = post.author
+                n2 = self.user.name
 
-            if n1 == n2:
-                key = db.Key.from_path('Post', int(post_id), parent=blog_key())
-                post = db.get(key)
-                post.delete()
-                self.redirect('/blog')
-            else:
-                self.redirect('/')
+                if n1 == n2:
+                    key = db.Key.from_path('Post', int(post_id), parent=blog_key())
+                    post = db.get(key)
+                    post.delete()
+                    self.redirect('/blog')
+                else:
+                    self.redirect('/login')
 
 
 # Unit 2 HW's
