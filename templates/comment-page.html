@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1><a href="/blog">return to front page</a></h1>
+  <form method="post">
+    <label>
+      <div>Comment for <a href="/blog/{{pkey.id()}}">{{subject}}</a></div>
+      <p>{{content}}</p>
+      <textarea name="comment" rows="8" cols="80">{{comment}}</textarea>
+    </label>
+    <br>
+    <input type="submit">
+  </form>
+{% endblock %}
