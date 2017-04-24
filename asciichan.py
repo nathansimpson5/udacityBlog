@@ -348,19 +348,17 @@ class DeleteComment(BlogHandler):
             error = "You must be logged in to delete"
             return self.redirect("/login")
         post = Post.get_by_id(int(post_id), parent=blog_key())
-        if post is not None:
-            comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
-            if comment is not None:
-                n1 = post.author
-                n2 = self.user.name
+        comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
+        if post is not None and comment is not None:
+            n1 = post.author
+            n2 = self.user.name
 
-                if n1 == n2:
-                    if comment:
-                        comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
-                        comment.delete()
-                        self.redirect('/blog/%s' % str(post_id))
-                else:
-                    return self.redirect("/login")
+            if n1 == n2:
+                comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
+                comment.delete()
+                self.redirect('/blog/%s' % str(post_id))
+            else:
+                return self.redirect("/login")
 
 
 # deletes posts
