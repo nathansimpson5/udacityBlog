@@ -242,23 +242,24 @@ class EditPost(BlogHandler):
 
         key = db.Key.from_path('Post', int(post_id), parent=blog_key())
         post = db.get(key)
-        n1 = post.author
-        n2 = self.user.name
+        if post is not None:
+            n1 = post.author
+            n2 = self.user.name
 
-        if n1 == n2:
-            subject = self.request.get('subject')
-            content = self.request.get('content')
-            author = self.user.name
+            if n1 == n2:
+                subject = self.request.get('subject')
+                content = self.request.get('content')
+                author = self.user.name
 
-            if subject and content:
-                post.subject = subject
-                post.content = content
-                post.put()
-                self.redirect('/blog/%s' % str(post.key().id()))
-            else:
-                error = "subject and content, please!"
-                self.render("newpost.html", subject=subject,
-                            content=content, error=error, author=author)
+                if subject and content:
+                    post.subject = subject
+                    post.content = content
+                    post.put()
+                    self.redirect('/blog/%s' % str(post.key().id()))
+                else:
+                    error = "subject and content, please!"
+                    self.render("newpost.html", subject=subject,
+                                content=content, error=error, author=author)
 
 
 # like handler
@@ -331,7 +332,7 @@ class EditComment(BlogHandler):
     def post(self, post_id, comment_id):
         if not self.user:
             error = "You must be logged in to comment"
-            self.redirect("/login")
+            return self.redirect("/login")
         comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
         if comment is not None:
             if comment.parent().key().id() == self.user.key().id():
@@ -345,19 +346,21 @@ class DeleteComment(BlogHandler):
     def get(self, post_id, comment_id):
         if not self.user:
             error = "You must be logged in to delete"
-            self.redirect("/login")
-        post = Post.get_by_id(int(post_id), parent=blog_key())
-        comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
-        n1 = post.author
-        n2 = self.user.name
-
-        if n1 == n2:
-            if comment:
-                comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
-                comment.delete()
-                self.redirect('/blog/%s' % str(post_id))
-        else:
             return self.redirect("/login")
+        post = Post.get_by_id(int(post_id), parent=blog_key())
+        if post is not None:
+            comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
+            if comment is not None:
+                n1 = post.author
+                n2 = self.user.name
+
+                if n1 == n2:
+                    if comment:
+                        comment = Comment.get_by_id(int(comment_id), parent=self.user.key())
+                        comment.delete()
+                        self.redirect('/blog/%s' % str(post_id))
+                else:
+                    return self.redirect("/login")
 
 
 # deletes posts
